@@ -22,21 +22,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#include "parse.h"
-#include "nt-headers.h"
-#include "to_string.h"
-
 #include <algorithm>
 #include <cstring>
-#include <list>
+#include <iostream>
+#include <vector>
 #include <stdexcept>
 
-using namespace std;
+#include <parser-library/nt-headers.h>
+#include <parser-library/parse.h>
+#include <parser-library/to_string.h>
 
 namespace peparse {
 
 struct section {
-  string sectionName;
+  std::string sectionName;
   std::uint64_t sectionBase;
   bounded_buffer *sectionData;
   image_section_header sec;
@@ -44,14 +43,14 @@ struct section {
 
 struct importent {
   VA addr;
-  string symbolName;
-  string moduleName;
+  std::string symbolName;
+  std::string moduleName;
 };
 
 struct exportent {
   VA addr;
-  string symbolName;
-  string moduleName;
+  std::string symbolName;
+  std::string moduleName;
 };
 
 struct reloc {
@@ -63,64 +62,64 @@ struct reloc {
 #define SYMBOL_TYPE_HI(x) (x.type >> 8)
 
 union symbol_name {
-  uint8_t shortName[NT_SHORT_NAME_LEN];
-  uint32_t zeroes;
-  uint64_t data;
+  std::uint8_t shortName[NT_SHORT_NAME_LEN];
+  std::uint32_t zeroes;
+  std::uint64_t data;
 };
 
 struct aux_symbol_f1 {
-  uint32_t tagIndex;
-  uint32_t totalSize;
-  uint32_t pointerToLineNumber;
-  uint32_t pointerToNextFunction;
+  std::uint32_t tagIndex;
+  std::uint32_t totalSize;
+  std::uint32_t pointerToLineNumber;
+  std::uint32_t pointerToNextFunction;
 };
 
 struct aux_symbol_f2 {
-  uint16_t lineNumber;
-  uint32_t pointerToNextFunction;
+  std::uint16_t lineNumber;
+  std::uint32_t pointerToNextFunction;
 };
 
 struct aux_symbol_f3 {
-  uint32_t tagIndex;
-  uint32_t characteristics;
+  std::uint32_t tagIndex;
+  std::uint32_t characteristics;
 };
 
 struct aux_symbol_f4 {
-  uint8_t filename[SYMTAB_RECORD_LEN];
-  string strFilename;
+  std::uint8_t filename[SYMTAB_RECORD_LEN];
+  std::string strFilename;
 };
 
 struct aux_symbol_f5 {
-  uint32_t length;
-  uint16_t numberOfRelocations;
-  uint16_t numberOfLineNumbers;
-  uint32_t checkSum;
-  uint16_t number;
-  uint8_t selection;
+  std::uint32_t length;
+  std::uint16_t numberOfRelocations;
+  std::uint16_t numberOfLineNumbers;
+  std::uint32_t checkSum;
+  std::uint16_t number;
+  std::uint8_t selection;
 };
 
 struct symbol {
-  string strName;
+  std::string strName;
   symbol_name name;
-  uint32_t value;
-  int16_t sectionNumber;
-  uint16_t type;
-  uint8_t storageClass;
-  uint8_t numberOfAuxSymbols;
-  list<aux_symbol_f1> aux_symbols_f1;
-  list<aux_symbol_f2> aux_symbols_f2;
-  list<aux_symbol_f3> aux_symbols_f3;
-  list<aux_symbol_f4> aux_symbols_f4;
-  list<aux_symbol_f5> aux_symbols_f5;
+  std::uint32_t value;
+  std::int16_t sectionNumber;
+  std::uint16_t type;
+  std::uint8_t storageClass;
+  std::uint8_t numberOfAuxSymbols;
+  std::vector<aux_symbol_f1> aux_symbols_f1;
+  std::vector<aux_symbol_f2> aux_symbols_f2;
+  std::vector<aux_symbol_f3> aux_symbols_f3;
+  std::vector<aux_symbol_f4> aux_symbols_f4;
+  std::vector<aux_symbol_f5> aux_symbols_f5;
 };
 
 struct parsed_pe_internal {
-  list<section> secs;
-  list<resource> rsrcs;
-  list<importent> imports;
-  list<reloc> relocs;
-  list<exportent> exports;
-  list<symbol> symbols;
+  std::vector<section> secs;
+  std::vector<resource> rsrcs;
+  std::vector<importent> imports;
+  std::vector<reloc> relocs;
+  std::vector<exportent> exports;
+  std::vector<symbol> symbols;
 };
 
 std::uint32_t err = 0;
@@ -135,22 +134,85 @@ static const char *pe_err_str[] = {"None",
                                    "Unable to read data",
                                    "Unable to open",
                                    "Unable to stat",
-                                   "Bad magic"};
+                                   "Bad magic",
+                                   "Invalid buffer",
+                                   "Invalid address",};
 
 std::uint32_t GetPEErr() {
   return err;
 }
 
-string GetPEErrString() {
+std::string GetPEErrString() {
   return pe_err_str[err];
 }
 
-string GetPEErrLoc() {
+std::string GetPEErrLoc() {
   return err_loc;
 }
 
+const char *GetSymbolTableStorageClassName(std::uint8_t id) {
+  switch (id) {
+    case IMAGE_SYM_CLASS_END_OF_FUNCTION:
+      return "CLASS_END_OF_FUNCTION";
+    case IMAGE_SYM_CLASS_NULL:
+      return "CLASS_NULL";
+    case IMAGE_SYM_CLASS_AUTOMATIC:
+      return "CLASS_AUTOMATIC";
+    case IMAGE_SYM_CLASS_EXTERNAL:
+      return "CLASS_EXTERNAL";
+    case IMAGE_SYM_CLASS_STATIC:
+      return "CLASS_STATIC";
+    case IMAGE_SYM_CLASS_REGISTER:
+      return "CLASS_REGISTER";
+    case IMAGE_SYM_CLASS_EXTERNAL_DEF:
+      return "CLASS_EXTERNAL_DEF";
+    case IMAGE_SYM_CLASS_LABEL:
+      return "CLASS_LABEL";
+    case IMAGE_SYM_CLASS_UNDEFINED_LABEL:
+      return "CLASS_UNDEFINED_LABEL";
+    case IMAGE_SYM_CLASS_MEMBER_OF_STRUCT:
+      return "CLASS_MEMBER_OF_STRUCT";
+    case IMAGE_SYM_CLASS_ARGUMENT:
+      return "CLASS_ARGUMENT";
+    case IMAGE_SYM_CLASS_STRUCT_TAG:
+      return "CLASS_STRUCT_TAG";
+    case IMAGE_SYM_CLASS_MEMBER_OF_UNION:
+      return "CLASS_MEMBER_OF_UNION";
+    case IMAGE_SYM_CLASS_UNION_TAG:
+      return "CLASS_UNION_TAG";
+    case IMAGE_SYM_CLASS_TYPE_DEFINITION:
+      return "CLASS_TYPE_DEFINITION";
+    case IMAGE_SYM_CLASS_UNDEFINED_STATIC:
+      return "CLASS_UNDEFINED_STATIC";
+    case IMAGE_SYM_CLASS_ENUM_TAG:
+      return "CLASS_ENUM_TAG";
+    case IMAGE_SYM_CLASS_MEMBER_OF_ENUM:
+      return "CLASS_MEMBER_OF_ENUM";
+    case IMAGE_SYM_CLASS_REGISTER_PARAM:
+      return "CLASS_REGISTER_PARAM";
+    case IMAGE_SYM_CLASS_BIT_FIELD:
+      return "CLASS_BIT_FIELD";
+    case IMAGE_SYM_CLASS_BLOCK:
+      return "CLASS_BLOCK";
+    case IMAGE_SYM_CLASS_FUNCTION:
+      return "CLASS_FUNCTION";
+    case IMAGE_SYM_CLASS_END_OF_STRUCT:
+      return "CLASS_END_OF_STRUCT";
+    case IMAGE_SYM_CLASS_FILE:
+      return "CLASS_FILE";
+    case IMAGE_SYM_CLASS_SECTION:
+      return "CLASS_SECTION";
+    case IMAGE_SYM_CLASS_WEAK_EXTERNAL:
+      return "CLASS_WEAK_EXTERNAL";
+    case IMAGE_SYM_CLASS_CLR_TOKEN:
+      return "CLASS_CLR_TOKEN";
+    default:
+      return nullptr;
+  }
+}
+
 static bool
-readCString(const bounded_buffer &buffer, std::uint32_t off, string &result) {
+readCString(const bounded_buffer &buffer, std::uint32_t off, std::string &result) {
   if (off < buffer.bufLen) {
     std::uint8_t *p = buffer.buf;
     std::uint32_t n = buffer.bufLen;
@@ -167,10 +229,10 @@ readCString(const bounded_buffer &buffer, std::uint32_t off, string &result) {
   return false;
 }
 
-bool getSecForVA(list<section> &secs, VA v, section &sec) {
+bool getSecForVA(const std::vector<section> &secs, VA v, section &sec) {
   for (section s : secs) {
-    ::uint64_t low = s.sectionBase;
-    ::uint64_t high = low + s.sec.Misc.VirtualSize;
+    std::uint64_t low = s.sectionBase;
+    std::uint64_t high = low + s.sec.Misc.VirtualSize;
 
     if (v >= low && v < high) {
       sec = s;
@@ -193,7 +255,7 @@ void IterRsrc(parsed_pe *pe, iterRsrc cb, void *cbd) {
   return;
 }
 
-bool parse_resource_id(bounded_buffer *data, std::uint32_t id, string &result) {
+bool parse_resource_id(bounded_buffer *data, std::uint32_t id, std::string &result) {
   std::uint8_t c;
   std::uint16_t len;
 
@@ -215,7 +277,7 @@ bool parse_resource_table(bounded_buffer *sectionData,
                           std::uint32_t virtaddr,
                           std::uint32_t depth,
                           resource_dir_entry *dirent,
-                          list<resource> &rsrcs) {
+                          std::vector<resource> &rsrcs) {
   resource_dir_table rdt;
 
   if (sectionData == nullptr) {
@@ -294,6 +356,14 @@ bool parse_resource_table(bounded_buffer *sectionData,
           return false;
         }
       }
+    } else {
+      /* .rsrc can accomodate up to 2**31 levels, but Windows only uses 3 by convention.
+       * As such, any depth above 3 indicates potentially unchecked recusion.
+       * See: https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#the-rsrc-section
+       */
+
+      PE_ERR(PEERR_RESC);
+      return false;
     }
 
     // High bit 0 = RVA to RDT.
@@ -419,8 +489,8 @@ bool parse_resource_table(bounded_buffer *sectionData,
 
 bool getResources(bounded_buffer *b,
                   bounded_buffer *fileBegin,
-                  list<section> secs,
-                  list<resource> &rsrcs) {
+                  const std::vector<section> secs,
+                  std::vector<resource> &rsrcs) {
   static_cast<void>(fileBegin);
 
   if (b == nullptr)
@@ -445,17 +515,17 @@ bool getResources(bounded_buffer *b,
 bool getSections(bounded_buffer *b,
                  bounded_buffer *fileBegin,
                  nt_header_32 &nthdr,
-                 list<section> &secs) {
+                 std::vector<section> &secs) {
   if (b == nullptr) {
     return false;
   }
 
   // get each of the sections...
-  for (::uint32_t i = 0; i < nthdr.FileHeader.NumberOfSections; i++) {
+  for (std::uint32_t i = 0; i < nthdr.FileHeader.NumberOfSections; i++) {
     image_section_header curSec;
 
-    ::uint32_t o = i * sizeof(image_section_header);
-    for (::uint32_t k = 0; k < NT_SHORT_NAME_LEN; k++) {
+    std::uint32_t o = i * sizeof(image_section_header);
+    for (std::uint32_t k = 0; k < NT_SHORT_NAME_LEN; k++) {
       if (!readByte(b, o + k, curSec.Name[k])) {
         return false;
       }
@@ -474,8 +544,8 @@ bool getSections(bounded_buffer *b,
     // now we have the section header information, so fill in a section
     // object appropriately
     section thisSec;
-    for (::uint32_t charIndex = 0; charIndex < NT_SHORT_NAME_LEN; charIndex++) {
-      ::uint8_t c = curSec.Name[charIndex];
+    for (std::uint32_t charIndex = 0; charIndex < NT_SHORT_NAME_LEN; charIndex++) {
+      std::uint8_t c = curSec.Name[charIndex];
       if (c == 0) {
         break;
       }
@@ -494,8 +564,8 @@ bool getSections(bounded_buffer *b,
     }
 
     thisSec.sec = curSec;
-    ::uint32_t lowOff = curSec.PointerToRawData;
-    ::uint32_t highOff = lowOff + curSec.SizeOfRawData;
+    std::uint32_t lowOff = curSec.PointerToRawData;
+    std::uint32_t highOff = lowOff + curSec.SizeOfRawData;
     thisSec.sectionData = splitBuffer(fileBegin, lowOff, highOff);
 
     secs.push_back(thisSec);
@@ -541,10 +611,10 @@ bool readOptionalHeader(bounded_buffer *b, optional_header_32 &header) {
     header.NumberOfRvaAndSizes = NUM_DIR_ENTRIES;
   }
 
-  for (::uint32_t i = 0; i < header.NumberOfRvaAndSizes; i++) {
-    ::uint32_t c = (i * sizeof(data_directory));
+  for (std::uint32_t i = 0; i < header.NumberOfRvaAndSizes; i++) {
+    std::uint32_t c = (i * sizeof(data_directory));
     c += _offset(optional_header_32, DataDirectory[0]);
-    ::uint32_t o;
+    std::uint32_t o;
 
     o = c + _offset(data_directory, VirtualAddress);
     if (!readDword(b, o, header.DataDirectory[i].VirtualAddress)) {
@@ -596,10 +666,10 @@ bool readOptionalHeader64(bounded_buffer *b, optional_header_64 &header) {
     header.NumberOfRvaAndSizes = NUM_DIR_ENTRIES;
   }
 
-  for (::uint32_t i = 0; i < header.NumberOfRvaAndSizes; i++) {
-    ::uint32_t c = (i * sizeof(data_directory));
+  for (std::uint32_t i = 0; i < header.NumberOfRvaAndSizes; i++) {
+    std::uint32_t c = (i * sizeof(data_directory));
     c += _offset(optional_header_64, DataDirectory[0]);
-    ::uint32_t o;
+    std::uint32_t o;
 
     o = c + _offset(data_directory, VirtualAddress);
     if (!readDword(b, o, header.DataDirectory[i].VirtualAddress)) {
@@ -632,8 +702,8 @@ bool readNtHeader(bounded_buffer *b, nt_header_32 &header) {
     return false;
   }
 
-  ::uint32_t pe_magic;
-  ::uint32_t curOffset = 0;
+  std::uint32_t pe_magic;
+  std::uint32_t curOffset = 0;
   if (!readDword(b, curOffset, pe_magic) || pe_magic != NT_MAGIC) {
     PE_ERR(PEERR_READ);
     return false;
@@ -730,8 +800,8 @@ bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem) {
   }
 
   // start by reading MZ
-  ::uint16_t tmp = 0;
-  ::uint32_t curOffset = 0;
+  std::uint16_t tmp = 0;
+  std::uint32_t curOffset = 0;
   if (!readWord(file, curOffset, tmp)) {
     PE_ERR(PEERR_READ);
     return false;
@@ -742,7 +812,7 @@ bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem) {
   }
 
   // read the offset to the NT headers
-  ::uint32_t offset;
+  std::uint32_t offset;
   if (!readDword(file, _offset(dos_header, e_lfanew), offset)) {
     PE_ERR(PEERR_READ);
     return false;
@@ -764,15 +834,15 @@ bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem) {
    * Need to determine if this is a PE32 or PE32+ binary and use the
    # correct size.
    */
-  ::uint32_t rem_size;
+  std::uint32_t rem_size;
   if (p.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC) {
     // signature + file_header + optional_header_32
     rem_size =
-        sizeof(::uint32_t) + sizeof(file_header) + sizeof(optional_header_32);
+        sizeof(std::uint32_t) + sizeof(file_header) + sizeof(optional_header_32);
   } else if (p.nt.OptionalMagic == NT_OPTIONAL_64_MAGIC) {
     // signature + file_header + optional_header_64
     rem_size =
-        sizeof(::uint32_t) + sizeof(file_header) + sizeof(optional_header_64);
+        sizeof(std::uint32_t) + sizeof(file_header) + sizeof(optional_header_64);
   } else {
     PE_ERR(PEERR_MAGIC);
     deleteBuffer(ntBuf);
@@ -837,7 +907,7 @@ bool getExports(parsed_pe *p) {
     }
 
     auto nameOff = static_cast<std::uint32_t>(nameVA - nameSec.sectionBase);
-    string modName;
+    std::string modName;
     if (!readCString(*nameSec.sectionData, nameOff, modName)) {
       return false;
     }
@@ -852,7 +922,7 @@ bool getExports(parsed_pe *p) {
 
     if (numNames > 0) {
       // get the names section
-      ::uint32_t namesRVA;
+      std::uint32_t namesRVA;
       if (!readDword(s.sectionData,
                      rvaofft + _offset(export_dir_table, NamePointerRVA),
                      namesRVA)) {
@@ -877,7 +947,7 @@ bool getExports(parsed_pe *p) {
           static_cast<std::uint32_t>(namesVA - namesSec.sectionBase);
 
       // get the EAT section
-      ::uint32_t eatRVA;
+      std::uint32_t eatRVA;
       if (!readDword(s.sectionData,
                      rvaofft + _offset(export_dir_table, ExportAddressTableRVA),
                      eatRVA)) {
@@ -901,7 +971,7 @@ bool getExports(parsed_pe *p) {
       auto eatOff = static_cast<std::uint32_t>(eatVA - eatSec.sectionBase);
 
       // get the ordinal base
-      ::uint32_t ordinalBase;
+      std::uint32_t ordinalBase;
       if (!readDword(s.sectionData,
                      rvaofft + _offset(export_dir_table, OrdinalBase),
                      ordinalBase)) {
@@ -935,10 +1005,10 @@ bool getExports(parsed_pe *p) {
       auto ordinalOff = static_cast<std::uint32_t>(ordinalTableVA -
                                                    ordinalTableSec.sectionBase);
 
-      for (::uint32_t i = 0; i < numNames; i++) {
-        ::uint32_t curNameRVA;
+      for (std::uint32_t i = 0; i < numNames; i++) {
+        std::uint32_t curNameRVA;
         if (!readDword(namesSec.sectionData,
-                       namesOff + (i * sizeof(::uint32_t)),
+                       namesOff + (i * sizeof(std::uint32_t)),
                        curNameRVA)) {
           return false;
         }
@@ -960,7 +1030,7 @@ bool getExports(parsed_pe *p) {
 
         auto curNameOff =
             static_cast<std::uint32_t>(curNameVA - curNameSec.sectionBase);
-        string symName;
+        std::string symName;
         std::uint8_t d;
 
         do {
@@ -977,17 +1047,17 @@ bool getExports(parsed_pe *p) {
         } while (true);
 
         // now, for this i, look it up in the ExportOrdinalTable
-        ::uint16_t ordinal;
+        std::uint16_t ordinal;
         if (!readWord(ordinalTableSec.sectionData,
-                      ordinalOff + (i * sizeof(uint16_t)),
+                      ordinalOff + (i * sizeof(std::uint16_t)),
                       ordinal)) {
           return false;
         }
 
         //::uint32_t  eatIdx = ordinal - ordinalBase;
-        ::uint32_t eatIdx = (ordinal * sizeof(uint32_t));
+        std::uint32_t eatIdx = (ordinal * sizeof(std::uint32_t));
 
-        ::uint32_t symRVA;
+        std::uint32_t symRVA;
         if (!readDword(eatSec.sectionData, eatOff + eatIdx, symRVA)) {
           return false;
         }
@@ -1076,9 +1146,9 @@ bool getRelocations(parsed_pe *p) {
 
       // Iterate over all of the block Type/Offset entries
       while (entryCount != 0) {
-        ::uint16_t entry;
-        ::uint8_t type;
-        ::uint16_t offset;
+        std::uint16_t entry;
+        std::uint8_t type;
+        std::uint16_t offset;
 
         if (!readWord(d.sectionData, rvaofft, entry)) {
           return false;
@@ -1108,7 +1178,7 @@ bool getRelocations(parsed_pe *p) {
         p->internal->relocs.push_back(r);
 
         entryCount--;
-        rvaofft += sizeof(::uint16_t);
+        rvaofft += sizeof(std::uint16_t);
       }
     }
   }
@@ -1181,12 +1251,22 @@ bool getImports(parsed_pe *p) {
       }
 
       auto nameOff = static_cast<std::uint32_t>(name - nameSec.sectionBase);
-      string modName;
+      std::string modName;
       if (!readCString(*nameSec.sectionData, nameOff, modName)) {
         return false;
       }
+
+      // clang-format off
       std::transform(
-          modName.begin(), modName.end(), modName.begin(), ::toupper);
+        modName.begin(),
+        modName.end(),
+        modName.begin(),
+
+        [](char chr) -> char {
+          return static_cast<char>(::toupper(chr));
+        }
+      );
+      // clang-format on
 
       // then, try and get all of the sub-symbols
       VA lookupVA = 0;
@@ -1220,13 +1300,13 @@ bool getImports(parsed_pe *p) {
 
       auto lookupOff =
           static_cast<std::uint32_t>(lookupVA - lookupSec.sectionBase);
-      ::uint32_t offInTable = 0;
+      std::uint32_t offInTable = 0;
       do {
         VA valVA = 0;
-        ::uint8_t ord = 0;
-        ::uint16_t oval = 0;
-        ::uint32_t val32 = 0;
-        ::uint64_t val64 = 0;
+        std::uint8_t ord = 0;
+        std::uint16_t oval = 0;
+        std::uint32_t val32 = 0;
+        std::uint64_t val64 = 0;
         if (p->peHeader.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC) {
           if (!readDword(lookupSec.sectionData, lookupOff, val32)) {
             return false;
@@ -1253,7 +1333,7 @@ bool getImports(parsed_pe *p) {
 
         if (ord == 0) {
           // import by name
-          string symName;
+          std::string symName;
           section symNameSec;
 
           if (!getSecForVA(p->internal->secs, valVA, symNameSec)) {
@@ -1262,7 +1342,7 @@ bool getImports(parsed_pe *p) {
 
           std::uint32_t nameOffset =
               static_cast<std::uint32_t>(valVA - symNameSec.sectionBase) +
-              sizeof(::uint16_t);
+              sizeof(std::uint16_t);
           do {
             std::uint8_t chr;
             if (!readByte(symNameSec.sectionData, nameOffset, chr)) {
@@ -1294,8 +1374,8 @@ bool getImports(parsed_pe *p) {
           ent.moduleName = modName;
           p->internal->imports.push_back(ent);
         } else {
-          string symName =
-              "ORDINAL_" + modName + "_" + to_string<uint32_t>(oval, dec);
+          std::string symName =
+              "ORDINAL_" + modName + "_" + to_string<std::uint32_t>(oval, std::dec);
 
           importent ent;
 
@@ -1316,11 +1396,11 @@ bool getImports(parsed_pe *p) {
         }
 
         if (p->peHeader.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC) {
-          lookupOff += sizeof(::uint32_t);
-          offInTable += sizeof(::uint32_t);
+          lookupOff += sizeof(std::uint32_t);
+          offInTable += sizeof(std::uint32_t);
         } else if (p->peHeader.nt.OptionalMagic == NT_OPTIONAL_64_MAGIC) {
-          lookupOff += sizeof(::uint64_t);
-          offInTable += sizeof(::uint64_t);
+          lookupOff += sizeof(std::uint64_t);
+          offInTable += sizeof(std::uint64_t);
         } else {
           return false;
         }
@@ -1338,13 +1418,13 @@ bool getSymbolTable(parsed_pe *p) {
     return true;
   }
 
-  uint32_t strTableOffset =
+  std::uint32_t strTableOffset =
       p->peHeader.nt.FileHeader.PointerToSymbolTable +
       (p->peHeader.nt.FileHeader.NumberOfSymbols * SYMTAB_RECORD_LEN);
 
-  uint32_t offset = p->peHeader.nt.FileHeader.PointerToSymbolTable;
+  std::uint32_t offset = p->peHeader.nt.FileHeader.PointerToSymbolTable;
 
-  for (uint32_t i = 0; i < p->peHeader.nt.FileHeader.NumberOfSymbols; i++) {
+  for (std::uint32_t i = 0; i < p->peHeader.nt.FileHeader.NumberOfSymbols; i++) {
     symbol sym;
 
     // Read name
@@ -1369,15 +1449,16 @@ bool getSymbolTable(parsed_pe *p) {
           break;
         }
         sym.strName.push_back(static_cast<char>(ch));
-        strOffset += sizeof(uint8_t);
+        strOffset += sizeof(std::uint8_t);
       }
     } else {
-      for (uint8_t n = 0; n < NT_SHORT_NAME_LEN; n++) {
+      for (std::uint8_t n = 0; n < NT_SHORT_NAME_LEN && sym.name.shortName[n] != 0;
+           n++) {
         sym.strName.push_back(static_cast<char>(sym.name.shortName[n]));
       }
     }
 
-    offset += sizeof(uint64_t);
+    offset += sizeof(std::uint64_t);
 
     // Read value
     if (!readDword(p->fileBuffer, offset, sym.value)) {
@@ -1385,7 +1466,7 @@ bool getSymbolTable(parsed_pe *p) {
       return false;
     }
 
-    offset += sizeof(uint32_t);
+    offset += sizeof(std::uint32_t);
 
     // Read section number
     uint16_t secNum;
@@ -1393,9 +1474,9 @@ bool getSymbolTable(parsed_pe *p) {
       PE_ERR(PEERR_MAGIC);
       return false;
     }
-    sym.sectionNumber = static_cast<int16_t>(secNum);
+    sym.sectionNumber = static_cast<std::int16_t>(secNum);
 
-    offset += sizeof(uint16_t);
+    offset += sizeof(std::uint16_t);
 
     // Read type
     if (!readWord(p->fileBuffer, offset, sym.type)) {
@@ -1403,7 +1484,7 @@ bool getSymbolTable(parsed_pe *p) {
       return false;
     }
 
-    offset += sizeof(uint16_t);
+    offset += sizeof(std::uint16_t);
 
     // Read storage class
     if (!readByte(p->fileBuffer, offset, sym.storageClass)) {
@@ -1411,7 +1492,7 @@ bool getSymbolTable(parsed_pe *p) {
       return false;
     }
 
-    offset += sizeof(uint8_t);
+    offset += sizeof(std::uint8_t);
 
     // Read number of auxiliary symbols
     if (!readByte(p->fileBuffer, offset, sym.numberOfAuxSymbols)) {
@@ -1420,7 +1501,7 @@ bool getSymbolTable(parsed_pe *p) {
     }
 
     // Set offset to next symbol
-    offset += sizeof(uint8_t);
+    offset += sizeof(std::uint8_t);
 
     // Save the symbol
     p->internal->symbols.push_back(sym);
@@ -1430,12 +1511,17 @@ bool getSymbolTable(parsed_pe *p) {
     }
 
     // Read auxiliary symbol records
+    auto nextSymbolOffset =
+        offset + (static_cast<std::uint32_t>(sym.numberOfAuxSymbols) *
+                  static_cast<std::uint32_t>(SYMTAB_RECORD_LEN));
+
+    i += sym.numberOfAuxSymbols;
 
     if (sym.storageClass == IMAGE_SYM_CLASS_EXTERNAL &&
         SYMBOL_TYPE_HI(sym) == 0x20 && sym.sectionNumber > 0) {
       // Auxiliary Format 1: Function Definitions
 
-      for (uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
+      for (std::uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
         aux_symbol_f1 asym;
 
         // Read tag index
@@ -1444,7 +1530,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read total size
         if (!readDword(p->fileBuffer, offset, asym.totalSize)) {
@@ -1452,7 +1538,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read pointer to line number
         if (!readDword(p->fileBuffer, offset, asym.pointerToLineNumber)) {
@@ -1460,7 +1546,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read pointer to next function
         if (!readDword(p->fileBuffer, offset, asym.pointerToNextFunction)) {
@@ -1469,18 +1555,19 @@ bool getSymbolTable(parsed_pe *p) {
         }
 
         // Skip the processed 4 bytes + unused 2 bytes
-        offset += sizeof(uint8_t) * 6;
+        offset += sizeof(std::uint8_t) * 6;
 
         // Save the record
         sym.aux_symbols_f1.push_back(asym);
       }
+
     } else if (sym.storageClass == IMAGE_SYM_CLASS_FUNCTION) {
       // Auxiliary Format 2: .bf and .ef Symbols
 
-      for (uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
+      for (std::uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
         aux_symbol_f2 asym;
         // Skip unused 4 bytes
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read line number
         if (!readWord(p->fileBuffer, offset, asym.lineNumber)) {
@@ -1488,8 +1575,10 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
+        offset += sizeof(std::uint16_t);
+
         // Skip unused 6 bytes
-        offset += sizeof(uint8_t) * 6;
+        offset += sizeof(std::uint8_t) * 6;
 
         // Read pointer to next function
         if (!readDword(p->fileBuffer, offset, asym.pointerToNextFunction)) {
@@ -1498,16 +1587,17 @@ bool getSymbolTable(parsed_pe *p) {
         }
 
         // Skip the processed 4 bytes + unused 2 bytes
-        offset += sizeof(uint8_t) * 6;
+        offset += sizeof(std::uint8_t) * 6;
 
         // Save the record
         sym.aux_symbols_f2.push_back(asym);
       }
+
     } else if (sym.storageClass == IMAGE_SYM_CLASS_EXTERNAL &&
                sym.sectionNumber == IMAGE_SYM_UNDEFINED && sym.value == 0) {
       // Auxiliary Format 3: Weak Externals
 
-      for (uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
+      for (std::uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
         aux_symbol_f3 asym;
 
         // Read line number
@@ -1523,33 +1613,47 @@ bool getSymbolTable(parsed_pe *p) {
         }
 
         // Skip unused 10 bytes
-        offset += sizeof(uint8_t) * 10;
+        offset += sizeof(std::uint8_t) * 10;
 
         // Save the record
         sym.aux_symbols_f3.push_back(asym);
       }
+
     } else if (sym.storageClass == IMAGE_SYM_CLASS_FILE) {
       // Auxiliary Format 4: Files
 
-      for (uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
+      for (std::uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
         aux_symbol_f4 asym;
 
         // Read filename
-        for (uint16_t j = 0; j < SYMTAB_RECORD_LEN; j++) {
+        bool terminatorFound = false;
+
+        for (std::uint16_t j = 0; j < SYMTAB_RECORD_LEN; j++) {
+          // Save the raw field
           if (!readByte(p->fileBuffer, offset, asym.filename[j])) {
             PE_ERR(PEERR_MAGIC);
             return false;
           }
-          asym.strFilename.push_back(static_cast<char>(asym.filename[j]));
+
+          offset += sizeof(std::uint8_t);
+
+          if (asym.filename[j] == 0) {
+            terminatorFound = true;
+          }
+
+          if (!terminatorFound) {
+            asym.strFilename.push_back(static_cast<char>(asym.filename[j]));
+          }
         }
 
         // Save the record
         sym.aux_symbols_f4.push_back(asym);
       }
+
     } else if (sym.storageClass == IMAGE_SYM_CLASS_STATIC) {
       // Auxiliary Format 5: Section Definitions
 
-      for (uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
+      for (std::uint8_t n = 0; n < sym.numberOfAuxSymbols; n++) {
         aux_symbol_f5 asym;
 
         // Read length
@@ -1558,7 +1662,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read number of relocations
         if (!readWord(p->fileBuffer, offset, asym.numberOfRelocations)) {
@@ -1566,7 +1670,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint16_t);
+        offset += sizeof(std::uint16_t);
 
         // Read number of line numbers
         if (!readWord(p->fileBuffer, offset, asym.numberOfLineNumbers)) {
@@ -1574,7 +1678,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint16_t);
+        offset += sizeof(std::uint16_t);
 
         // Read checksum
         if (!readDword(p->fileBuffer, offset, asym.checkSum)) {
@@ -1582,7 +1686,7 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
-        offset += sizeof(uint32_t);
+        offset += sizeof(std::uint32_t);
 
         // Read number
         if (!readWord(p->fileBuffer, offset, asym.number)) {
@@ -1590,21 +1694,50 @@ bool getSymbolTable(parsed_pe *p) {
           return false;
         }
 
+        offset += sizeof(std::uint16_t);
+
         // Read selection
         if (!readByte(p->fileBuffer, offset, asym.selection)) {
           PE_ERR(PEERR_MAGIC);
           return false;
         }
 
+        offset += sizeof(std::uint8_t);
+
         // Skip unused 3 bytes
-        offset += sizeof(uint8_t) * 3;
+        offset += sizeof(std::uint8_t) * 3;
 
         // Save the record
         sym.aux_symbols_f5.push_back(asym);
       }
+
     } else {
-      // Skip an unknown auxiliary record types
-      offset += sizeof(uint8_t) * SYMTAB_RECORD_LEN * sym.numberOfAuxSymbols;
+      std::ios::fmtflags originalStreamFlags(std::cerr.flags());
+
+      auto storageClassName = GetSymbolTableStorageClassName(sym.storageClass);
+      if (storageClassName == nullptr) {
+        std::cerr << "Warning: Skipping auxiliary symbol of type 0x" << std::hex
+                  << static_cast<std::uint32_t>(sym.storageClass)
+                  << " at offset 0x" << std::hex << offset << "\n";
+      } else {
+        std::cerr << "Warning: Skipping auxiliary symbol of type "
+                  << storageClassName << " at offset 0x" << std::hex << offset
+                  << "\n";
+      }
+
+      std::cerr.flags(originalStreamFlags);
+      offset = nextSymbolOffset;
+    }
+
+    if (offset != nextSymbolOffset) {
+      std::ios::fmtflags originalStreamFlags(std::cerr.flags());
+
+      std::cerr << "Warning: Invalid internal offset (current: 0x" << std::hex
+                << offset << ", expected: 0x" << std::hex << nextSymbolOffset
+                << ")\n";
+
+      std::cerr.flags(originalStreamFlags);
+      offset = nextSymbolOffset;
     }
   }
 
@@ -1730,7 +1863,7 @@ void DestructParsedPE(parsed_pe *p) {
 
 // iterate over the imports by VA and string
 void IterImpVAString(parsed_pe *pe, iterVAStr cb, void *cbd) {
-  list<importent> &l = pe->internal->imports;
+  std::vector<importent> &l = pe->internal->imports;
 
   for (importent i : l) {
     if (cb(cbd, i.addr, i.moduleName, i.symbolName) != 0) {
@@ -1743,7 +1876,7 @@ void IterImpVAString(parsed_pe *pe, iterVAStr cb, void *cbd) {
 
 // iterate over relocations in the PE file
 void IterRelocs(parsed_pe *pe, iterReloc cb, void *cbd) {
-  list<reloc> &l = pe->internal->relocs;
+  std::vector<reloc> &l = pe->internal->relocs;
 
   for (reloc r : l) {
     if (cb(cbd, r.shiftedAddr, r.type) != 0) {
@@ -1756,7 +1889,7 @@ void IterRelocs(parsed_pe *pe, iterReloc cb, void *cbd) {
 
 // Iterate over symbols (symbol table) in the PE file
 void IterSymbols(parsed_pe *pe, iterSymbol cb, void *cbd) {
-  list<symbol> &l = pe->internal->symbols;
+  std::vector<symbol> &l = pe->internal->symbols;
 
   for (symbol s : l) {
     if (cb(cbd,
@@ -1775,7 +1908,7 @@ void IterSymbols(parsed_pe *pe, iterSymbol cb, void *cbd) {
 
 // iterate over the exports by VA
 void IterExpVA(parsed_pe *pe, iterExp cb, void *cbd) {
-  list<exportent> &l = pe->internal->exports;
+  std::vector<exportent> &l = pe->internal->exports;
 
   for (exportent i : l) {
     if (cb(cbd, i.addr, i.moduleName, i.symbolName) != 0) {
@@ -1799,7 +1932,7 @@ void IterSec(parsed_pe *pe, iterSec cb, void *cbd) {
   return;
 }
 
-bool ReadByteAtVA(parsed_pe *pe, VA v, ::uint8_t &b) {
+bool ReadByteAtVA(parsed_pe *pe, VA v, std::uint8_t &b) {
   // find this VA in a section
   section s;
 
@@ -1833,4 +1966,75 @@ bool GetEntryPoint(parsed_pe *pe, VA &v) {
 
   return false;
 }
+
+const char *GetMachineAsString(parsed_pe *pe) {
+  if (pe == nullptr)
+    return nullptr;
+
+  switch (pe->peHeader.nt.FileHeader.Machine) {
+    case IMAGE_FILE_MACHINE_I386:
+      return "x86";
+    case IMAGE_FILE_MACHINE_ARMNT:
+      return "ARM Thumb-2 Little-Endian";
+    case IMAGE_FILE_MACHINE_IA64:
+      return "Intel IA64";
+    case IMAGE_FILE_MACHINE_AMD64:
+      return "x64";
+    case IMAGE_FILE_MACHINE_ARM64:
+      return "ARM64";
+    case IMAGE_FILE_MACHINE_CEE:
+      return "CLR Pure MSIL";
+    default:
+      return nullptr;
+  }
+}
+
+const char *GetSubsystemAsString(parsed_pe *pe) {
+  if (pe == nullptr)
+    return nullptr;
+
+  std::uint16_t subsystem;
+  if (pe->peHeader.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC)
+    subsystem = pe->peHeader.nt.OptionalHeader.Subsystem;
+  else if (pe->peHeader.nt.OptionalMagic == NT_OPTIONAL_64_MAGIC)
+    subsystem = pe->peHeader.nt.OptionalHeader64.Subsystem;
+  else
+    return nullptr;
+
+  switch (subsystem) {
+    case IMAGE_SUBSYSTEM_UNKNOWN:
+      return "UNKNOWN";
+    case IMAGE_SUBSYSTEM_NATIVE:
+      return "NATIVE";
+    case IMAGE_SUBSYSTEM_WINDOWS_GUI:
+      return "WINDOWS_GUI";
+    case IMAGE_SUBSYSTEM_WINDOWS_CUI:
+      return "WINDOWS_CUI";
+    case IMAGE_SUBSYSTEM_OS2_CUI:
+      return "OS2_CUI";
+    case IMAGE_SUBSYSTEM_POSIX_CUI:
+      return "POSIX_CUI";
+    case IMAGE_SUBSYSTEM_NATIVE_WINDOWS:
+      return "NATIVE_WINDOWS";
+    case IMAGE_SUBSYSTEM_WINDOWS_CE_GUI:
+      return "WINDOWS_CE_GUI";
+    case IMAGE_SUBSYSTEM_EFI_APPLICATION:
+      return "EFI_APPLICATION";
+    case IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER:
+      return "EFI_BOOT_SERVICE_DRIVER";
+    case IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER:
+      return "EFI_RUNTIME_DRIVER";
+    case IMAGE_SUBSYSTEM_EFI_ROM:
+      return "EFI_ROM";
+    case IMAGE_SUBSYSTEM_XBOX:
+      return "XBOX";
+    case IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION:
+      return "WINDOWS_BOOT_APPLICATION";
+    case IMAGE_SUBSYSTEM_XBOX_CODE_CATALOG:
+      return "XBOX_CODE_CATALOG";
+    default:
+      return nullptr;
+  }
+}
+
 } // namespace peparse

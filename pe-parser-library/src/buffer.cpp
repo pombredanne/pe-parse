@@ -22,12 +22,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#include "parse.h"
-
 #include <cstring>
 #include <fstream>
 
-#ifdef WIN32
+// keep this header above "windows.h" because it contains many types
+#include <parser-library/parse.h>
+
+#ifdef _WIN32
+
+#define WIN32_LEAN_AND_MEAN
+#define VC_EXTRALEAN
+
 #include <intrin.h>
 #include <windows.h>
 #else
@@ -71,7 +76,7 @@ extern std::uint32_t err;
 extern std::string err_loc;
 
 struct buffer_detail {
-#ifdef WIN32
+#ifdef _WIN32
   HANDLE file;
   HANDLE sec;
 #else
@@ -81,10 +86,12 @@ struct buffer_detail {
 
 bool readByte(bounded_buffer *b, std::uint32_t offset, std::uint8_t &out) {
   if (b == nullptr) {
+    PE_ERR(PEERR_BUFFER);
     return false;
   }
 
   if (offset >= b->bufLen) {
+    PE_ERR(PEERR_ADDRESS);
     return false;
   }
 
@@ -96,10 +103,12 @@ bool readByte(bounded_buffer *b, std::uint32_t offset, std::uint8_t &out) {
 
 bool readWord(bounded_buffer *b, std::uint32_t offset, std::uint16_t &out) {
   if (b == nullptr) {
+    PE_ERR(PEERR_BUFFER);
     return false;
   }
 
-  if (offset >= b->bufLen) {
+  if (offset + 1 >= b->bufLen) {
+    PE_ERR(PEERR_ADDRESS);
     return false;
   }
 
@@ -115,10 +124,12 @@ bool readWord(bounded_buffer *b, std::uint32_t offset, std::uint16_t &out) {
 
 bool readDword(bounded_buffer *b, std::uint32_t offset, std::uint32_t &out) {
   if (b == nullptr) {
+    PE_ERR(PEERR_BUFFER);
     return false;
   }
 
-  if (offset >= b->bufLen) {
+  if (offset + 3 >= b->bufLen) {
+    PE_ERR(PEERR_ADDRESS);
     return false;
   }
 
@@ -134,10 +145,12 @@ bool readDword(bounded_buffer *b, std::uint32_t offset, std::uint32_t &out) {
 
 bool readQword(bounded_buffer *b, std::uint32_t offset, std::uint64_t &out) {
   if (b == nullptr) {
+    PE_ERR(PEERR_BUFFER);
     return false;
   }
 
-  if (offset >= b->bufLen) {
+  if (offset + 7 >= b->bufLen) {
+    PE_ERR(PEERR_ADDRESS);
     return false;
   }
 
@@ -152,7 +165,7 @@ bool readQword(bounded_buffer *b, std::uint32_t offset, std::uint64_t &out) {
 }
 
 bounded_buffer *readFileToFileBuffer(const char *filePath) {
-#ifdef WIN32
+#ifdef _WIN32
   HANDLE h = CreateFileA(filePath,
                          GENERIC_READ,
                          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -200,7 +213,7 @@ bounded_buffer *readFileToFileBuffer(const char *filePath) {
   p->detail = d;
 
 // only where we have mmap / open / etc
-#ifdef WIN32
+#ifdef _WIN32
   p->detail->file = h;
 
   HANDLE hMap = CreateFileMapping(h, nullptr, PAGE_READONLY, 0, 0, nullptr);
@@ -220,7 +233,7 @@ bounded_buffer *readFileToFileBuffer(const char *filePath) {
     return nullptr;
   }
 
-  p->buf = (::uint8_t *) ptr;
+  p->buf = reinterpret_cast<std::uint8_t *>(ptr);
   p->bufLen = fileSize;
 #else
   p->detail->fd = fd;
@@ -291,7 +304,7 @@ void deleteBuffer(bounded_buffer *b) {
   }
 
   if (!b->copy) {
-#ifdef WIN32
+#ifdef _WIN32
     UnmapViewOfFile(b->buf);
     CloseHandle(b->detail->sec);
     CloseHandle(b->detail->file);

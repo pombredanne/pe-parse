@@ -133,7 +133,9 @@ enum pe_err {
   PEERR_READ = 6,
   PEERR_OPEN = 7,
   PEERR_STAT = 8,
-  PEERR_MAGIC = 9
+  PEERR_MAGIC = 9,
+  PEERR_BUFFER = 10,
+  PEERR_ADDRESS = 11,
 };
 
 bool readByte(bounded_buffer *b, std::uint32_t offset, std::uint8_t &out);
@@ -179,7 +181,7 @@ typedef int (*iterRsrc)(void *, resource);
 void IterRsrc(parsed_pe *pe, iterRsrc cb, void *cbd);
 
 // iterate over the imports by RVA and string
-typedef int (*iterVAStr)(void *, VA, std::string &, std::string &);
+typedef int (*iterVAStr)(void *, VA, const std::string &, const std::string &);
 void IterImpVAString(parsed_pe *pe, iterVAStr cb, void *cbd);
 
 // iterate over relocations in the PE file
@@ -210,4 +212,10 @@ bool ReadByteAtVA(parsed_pe *pe, VA v, std::uint8_t &b);
 
 // get entry point into PE
 bool GetEntryPoint(parsed_pe *pe, VA &v);
+
+// get machine as human readable string
+const char *GetMachineAsString(parsed_pe *pe);
+
+// get subsystem as human readable string
+const char *GetSubsystemAsString(parsed_pe *pe);
 } // namespace peparse

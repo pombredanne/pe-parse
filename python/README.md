@@ -7,10 +7,37 @@ Building
 If you can build pe-parse and have a working python environment (headers and
 libraries) you can build pepy.
 
+Python 2.7
+----------
 1. Build pepy:
   * python setup.py build
 2. Install pepy:
   * python setup.py install
+
+**Building on Windows:** If you get a build error of 'Unable to find
+vcvarsall.bat', you must set the `VS90COMNTOOLS` environment variable prior
+to the appropriate path as per
+[this SO article](http://stackoverflow.com/questions/2817869/error-unable-to-find-vcvarsall-bat):
+> While running setup.py for package installations, Python 2.7 searches for an
+> installed Visual Studio 2008. You can trick Python to use a newer Visual
+> Studio by setting the correct path in VS90COMNTOOLS environment variable
+> before calling setup.py.
+> 
+> Execute the following command based on the version of Visual Studio installed:
+> * Visual Studio 2010 (VS10): `SET VS90COMNTOOLS=%VS100COMNTOOLS%`
+> * Visual Studio 2012 (VS11): `SET VS90COMNTOOLS=%VS110COMNTOOLS%`
+> * Visual Studio 2013 (VS12): `SET VS90COMNTOOLS=%VS120COMNTOOLS%`
+> * Visual Studio 2015/2017 (VS14): `SET VS90COMNTOOLS=%VS140COMNTOOLS%`
+
+Python 3.x
+----------
+1. Build pepy:
+  * python3 setup.py build
+2. Install pepy:
+  * python3 setup.py install
+
+**Building on Windows:** Python 3.x is typically installed as _python.exe_
+**NOT** _python3.exe_.
 
 Using
 =====
@@ -27,6 +54,8 @@ p = pepy.parse("/path/to/exe")
 The **parsed** object has a number of methods:
 
 * get_entry_point: Return the entry point address
+* get_machine_as_str: Return the machine as a human readable string
+* get_subsystem_as_str: Return the subsystem as a human readable string
 * get_bytes: Return the first N bytes at a given address
 * get_sections: Return a list of section objects
 * get_imports: Return a list of import objects
@@ -53,7 +82,7 @@ The **parsed** object has a number of attributes:
 * baseofdata
 * imagebase
 * sectionalignement
-* filealingment
+* filealignment
 * majorosver
 * minorosver
 * win32ver
